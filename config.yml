@@ -1,0 +1,19 @@
+AppName: "fiber main & replica"
+
+log:
+  level: "info"
+
+mainServer:
+  port: "8000"
+  appName: "main server"
+
+replicaServer:
+  port: "8001"
+  appName: "replica server"
+  mainServerAddress: "localhost:8000"
+  fetchTimeoutSecond: 5
+
+database:
+  main:
+    dsn: "postgres://user:mysecretpassword@localhost:5432/main_replica_db?sslmode=disable"
+

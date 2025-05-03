@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:15-alpine # Use a specific version of postgres alpine
+    container_name: fiber_replica_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: mysecretpassword # Use a more secure password in production
+      POSTGRES_DB: main_replica_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist data
+    ports:
+      - "5432:5432" # Expose port for potential external access/debugging (optional)
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d main_replica_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  main_server:
+    build: . # Build from the Dockerfile in the current directory
+    container_name: fiber_main_server
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy # Wait for db to be healthy
+    environment:
+      # Override DSN to point to the db service within the Docker network
+      APP_DATABASE_MAIN_DSN: "postgres://user:mysecretpassword@db:5432/main_replica_db?sslmode=disable"
+      APP_MAINSERVER_PORT: "8000" # Ensure port is set if needed by config logic
+      APP_LOG_LEVEL: "info"
+    command: ["/app/main_server"] # Command to run inside the container
+    networks:
+      - app-network
+
+  replica_server:
+    build: . # Build from the Dockerfile in the current directory
+    container_name: fiber_replica_server
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy # Wait for db to be healthy
+      main_server:
+        condition: service_started # Wait for main server to start (doesn't guarantee readiness)
+    environment:
+      # Override DSN to point to the db service
+      APP_DATABASE_MAIN_DSN: "postgres://user:mysecretpassword@db:5432/main_replica_db?sslmode=disable"
+      # Override Main Server Address to point to the main_server service
+      APP_REPLICASERVER_MAINSERVERADDRESS: "http://main_server:8000"
+      APP_REPLICASERVER_PORT: "8001" # Ensure port is set
+      APP_LOG_LEVEL: "info"
+    command: ["/app/replica_server"] # Command to run inside the container
+    networks:
+      - app-network
+
+volumes:
+  postgres_data: # Define the named volume for data persistence
+
+networks:
+  app-network: # Define the network for services to communicate
+    driver: bridge
